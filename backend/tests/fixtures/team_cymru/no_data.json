@@ -1,0 +1,8 @@
+{
+  "queries": {
+    "1.2.0.192.origin.asn.cymru.com": {
+      "rcode": "NXDOMAIN",
+      "txt": []
+    }
+  }
+}

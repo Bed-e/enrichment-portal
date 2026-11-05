@@ -1,0 +1,16 @@
+{
+  "queries": {
+    "8.8.8.8.origin.asn.cymru.com": {
+      "rcode": "NOERROR",
+      "txt": [
+        "15169 | 8.8.8.0/24 | US | arin | 2023-12-28"
+      ]
+    },
+    "AS15169.asn.cymru.com": {
+      "rcode": "NOERROR",
+      "txt": [
+        "15169 | US | arin | 2000-03-30 | GOOGLE - Google LLC, US"
+      ]
+    }
+  }
+}

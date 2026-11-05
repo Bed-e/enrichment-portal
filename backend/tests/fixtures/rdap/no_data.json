@@ -1,0 +1,11 @@
+{
+  "status_code": 404,
+  "body": {
+    "rdapConformance": [
+      "rdap_level_0"
+    ],
+    "lang": "en",
+    "errorCode": 404,
+    "title": "No RDAP service is available for this resource"
+  }
+}
