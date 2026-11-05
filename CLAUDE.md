@@ -20,4 +20,15 @@ The full design, decisions (D1–D18), API contract and milestones live in [desi
 
 - Before writing each source client, check the provider's current documentation and update `design.md` section 4 if anything differs.
 - Write `docs/verdict-rules.md` before implementing the verdict engine, so the rules can be reviewed separately from the code.
-- Runtime requirements (commands to run, test, lint) will be added here as they are established.
+## Commands
+
+Run from `backend/` or `frontend/` (each has its own `pyproject.toml`, `uv.lock` and `.python-version`):
+
+- Install: `uv sync`
+- Run backend: `uv run uvicorn app.main:app --reload --port 8000`
+- Run frontend: `uv run uvicorn app.main:app --reload --port 8001` (reads `BACKEND_URL`)
+- Test: `uv run pytest` (sockets are blocked by `--disable-socket`)
+- Lint and format: `uv run ruff check .` and `uv run ruff format --check .`
+- Record fixtures by hand (backend only, never in CI): `uv run python scripts/record_fixtures.py`
+
+CI runs lint, format check and tests for both parts.

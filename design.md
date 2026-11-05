@@ -317,7 +317,7 @@ Endpoints, limits and terms below are as understood when this was written. Claim
 
 | Source | How it is queried | Key | Limit | What it contributes | Terms to check |
 |---|---|---|---|---|---|
-| Shodan InternetDB | `GET https://internetdb.shodan.io/{ip}`; 404 means no data | None | None published; the app self-limits politely | Open ports, CPEs, hostnames, tags (e.g. `tor`, `vpn`, `c2`, `compromised`), known CVEs | Free for non-commercial use |
+| Shodan InternetDB | `GET https://internetdb.shodan.io/{ip}`; 404 means no data | None | None published; the app self-limits politely | Open ports, CPEs, hostnames, tags (e.g. `tor`, `vpn`, `c2`, `compromised`), known CVEs | Free for non-commercial use. *(checked 11/5/26)* The response field for open ports is `ports` (mapped to `open_ports` in our summary); an IP with no data returns HTTP 404 with `{"detail": "No information available"}`; data is refreshed weekly, so results can be several days old |
 | RDAP via rdap.org | `GET https://rdap.org/ip/{ip}`; follow the redirect to the right RIR | None | 10 requests in 10 s *(checked 11/5/26)* | Network name, owning organization, allocation range, registration dates, abuse contact | rdap.org is a bootstrap redirector; data comes from the RIRs |
 | Team Cymru IP to ASN | DNS TXT query to `<reversed-ip>.origin.asn.cymru.com`, then `AS<n>.asn.cymru.com` for the AS name | None | None published | ASN, BGP prefix, country, registry, AS name | Fine for low volume; Cymru asks heavy users to use bulk whois instead |
 

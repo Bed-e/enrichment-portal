@@ -1,0 +1,54 @@
+<section class="verdict verdict-{{ result.verdict.level }}" aria-label="Overall verdict">
+  <h2>{{ result.verdict.level | replace("_", " ") | capitalize }}</h2>
+  <p>{{ result.verdict.summary }}</p>
+  <p class="meta">
+    {{ result.ip }} (IPv{{ result.ip_version }}) &middot; {{ result.classification.category | replace("_", " ") }}
+    &middot; queried {{ result.queried_at }} &middot; rules v{{ result.verdict.rules_version }}
+  </p>
+</section>
+
+{% if not result.classification.is_global %}
+<section class="message note">
+  <strong>{{ result.classification.category | replace("_", " ") | capitalize }} address.</strong>
+  {{ result.classification.explanation }}
+</section>
+{% endif %}
+
+<h2 class="sources-heading">Sources</h2>
+{% for source in result.sources %}
+<article class="card status-{{ source.status }}">
+  <header>
+    <h3>{{ source.display_name }}</h3>
+    <span class="badge">{{ source.status | replace("_", " ") }}</span>
+    {% if source.latency_ms is not none %}<span class="latency">{{ source.latency_ms }} ms</span>{% endif %}
+  </header>
+
+  {% if source.status == "ok" and source.summary %}
+  <dl>
+    {% for key, value in source.summary.items() %}
+    <dt>{{ key | replace("_", " ") }}</dt>
+    <dd>
+      {% if value is iterable and value is not string %}
+        {% if value %}{{ value | join(", ") }}{% else %}<span class="none">none</span>{% endif %}
+      {% elif value is none or value == "" %}
+        <span class="none">none</span>
+      {% else %}
+        {{ value }}
+      {% endif %}
+    </dd>
+    {% endfor %}
+  </dl>
+  {% elif source.status == "rate_limited" %}
+  <p>Quota reached — try later.</p>
+  {% elif source.error %}
+  <p>{{ source.error }}</p>
+  {% endif %}
+
+  {% if source.raw is not none %}
+  <details>
+    <summary>Raw response</summary>
+    <pre>{{ source.raw | tojson(indent=2) }}</pre>
+  </details>
+  {% endif %}
+</article>
+{% endfor %}
