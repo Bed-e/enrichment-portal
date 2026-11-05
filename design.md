@@ -148,7 +148,7 @@ All JSON endpoints live under `/api/v1`. Times are UTC ISO 8601.
 
 Runs a live lookup of one IP.
 
-**200 OK.** This is a milestone 1 example. The IP is a real public address, but every value below is illustrative, and real responses will differ. It shows all three M1 sources, with two `ok` and one `timeout`.
+**200 OK.** This is an example of the full M1 response. M0 returns the same shape with only the `shodan_internetdb` entry in `sources`, and with the placeholder verdict described under "Field rules". The IP is a real public address, but every value below is illustrative, and real responses will differ. It shows all three M1 sources, with two `ok` and one `timeout`.
 
 ```json
 {
@@ -216,6 +216,7 @@ Runs a live lookup of one IP.
 
 **Field rules**
 
+- In M0 there is no verdict engine. For a global IP the verdict is the fixed placeholder `unknown` with `rules_version` `"0.0"`, empty `reasons`, and the summary "Verdict rules are added in M1." Private and reserved IPs are `not_applicable` as below.
 - `lookup_id` is `null` until M3. From M3 on it is the history record ID.
 - `verdict.level` is one of `malicious`, `suspicious`, `no_known_bad`, `unknown` or `not_applicable`. `not_applicable` is used for private and reserved IPs that were not sent to external sources. The app never returns "clean"; see D8.
 - `verdict.reasons` lists every signal that contributed to the verdict, each as `{"source", "signal", "weight"}`. `weight` is `high`, `medium` or `low`. What each weight means, and which combinations produce which level, is defined in `docs/verdict-rules.md`. An empty list means no signal fired.
@@ -312,7 +313,7 @@ All frontend routes except `/healthz` and the login pages require an authenticat
 
 Endpoints, limits and terms below are as understood when this was written. Claims marked *(checked 11/5/26)* were confirmed against the provider's own page on that date. **Claude Code must check each one against the provider's current documentation before implementing that client**, and update this table if anything differs.
 
-### Keyless (Milestone 1)
+### Keyless (Shodan InternetDB in Milestone 0, the others in Milestone 1)
 
 | Source | How it is queried | Key | Limit | What it contributes | Terms to check |
 |---|---|---|---|---|---|
@@ -385,8 +386,8 @@ This was my choice. It keeps the API and the UI simple. A slow source costs at m
 **D5 — No caching. Every lookup is live.**
 This was my choice. It guarantees fresh data and avoids stale-intel bugs. The cost is accepted: GreyNoise will be unavailable for much of each week, and VirusTotal may be rate-limited during quick bursts of lookups. The quota behaviour in section 4 keeps this from breaking lookups, but does not remove it. M3 history stores past lookups for the analyst to look back at, but stored results are never reused to answer a new lookup.
 
-**D6 — Keyless sources first (M1), all keyed sources together later (M2).**
-M1 can be built and tested with no accounts or secrets, which proves out the architecture. Note that the keyless sources give context (exposure, ownership, ASN) rather than reputation, so the M1 verdict is provisional and leans heavily on Shodan tags. In M1 a public IP with no red flags gets `no_known_bad`, and the verdict summary must say that only context sources were checked, so the analyst can see how little evidence it rests on.
+**D6 — One keyless source first (M0), the other keyless sources next (M1), all keyed sources together later (M2).**
+M0 and M1 can be built and tested with no accounts or secrets, and M0 proves out the whole architecture with a single real source. Note that the keyless sources give context (exposure, ownership, ASN) rather than reputation, so the M1 verdict is provisional and leans heavily on Shodan tags. In M1 a public IP with no red flags gets `no_known_bad`, and the verdict summary must say that only context sources were checked, so the analyst can see how little evidence it rests on.
 
 **D7 — Claude Code proposes the verdict rules and I review them before they are final.**
 Verdict logic is a judgment call that should be visible and owned by the analyst, not buried in code. Claude Code writes the proposed rules in `docs/verdict-rules.md`: each rule's condition, resulting level and rationale. I approve them, and only then is the milestone done. The rules are versioned (`rules_version`), and every verdict lists the signals that produced it.
@@ -448,31 +449,55 @@ These definitions apply to **every** milestone, in addition to the milestone's o
 - The work reaches `main` through a pull request.
 - This document is updated if a decision changed during the milestone.
 
-### M0 — Skeleton and CI
+### M0 — Skeleton, CI and one real source
+
+The thinnest end-to-end slice that is skeletal but functional: one real source, queried through the backend API that follows the section 3 contract, and shown by the separate frontend. The source is Shodan InternetDB because it is keyless, needs no account and has the simplest response.
+
+**Layout, tooling and CI**
 
 - The repo has the layout from section 2: `backend/` and `frontend/`, each with its own `pyproject.toml` and `uv.lock` managed with `uv`. The root has `.env.example` and a `.gitignore` covering every path in "Values that must never leave this machine" (section 4).
 - pytest in both projects is configured so that any real network connection fails the test run (D13).
-- In `backend/`, `uvicorn app.main:app --reload` serves `/healthz`.
-- In `frontend/`, the same command serves `/` and its own `/healthz`. The placeholder page calls the backend's `/healthz` through `backend_client.py` and shows the result, or a "backend unavailable" message if the backend is down. This proves the frontend reaches the backend only over HTTP.
 - `.github/workflows/ci.yml` runs lint, format check and tests for both projects, and passes.
 - The README covers install, run and test for both parts.
 
-**Done when:** a fresh clone, then `uv sync` in each part, then running both shows the placeholder page reporting the backend as healthy (and reporting it unavailable when the backend is stopped), and CI is green.
+**Backend**
 
-### M1 — Keyless IPv4 lookup, end to end
+- `/healthz` and `GET /api/v1/ip/{ip}` for IPv4, following section 3.
+- The IP classifier (`ip_classify.py`) with every category and an explanation for each non-global one. Private and reserved addresses get `not_applicable`, the source is `skipped`, and no external call is made (D9).
+- The `SourceClient` interface and a source registry, with one registered source: the Shodan InternetDB client. Before writing it, I check InternetDB's current documentation and update section 4 if anything differs. It handles `ok`, `no_data` (404), `timeout`, `rate_limited` (429) and `error`, and never raises to the service.
+- `LookupService` runs the registered sources concurrently, each with its own timeout (D3).
+- **There is no verdict engine yet.** For a global IP the verdict is a fixed placeholder: level `unknown`, `rules_version` `"0.0"`, and the summary "Verdict rules are added in M1." The `unknown` level is used because nothing yet judges the evidence, and the placeholder never claims an IP is safe (D8). If InternetDB returned nothing usable, the summary says no source could answer.
+- Error responses for every row of the section 3 errors table that applies in M0: `invalid_ip`, `unsupported_ip_version` (IPv6), `invalid_request`, `not_found` and `internal_error`, all as `{"error", "message"}` through custom exception handlers. An invalid IP gets a 400, never a crash.
 
-- An IPv4 address sent to the backend's `GET /api/v1/ip/{ip}` returns the contract in section 3, and the frontend shows the result by calling that endpoint.
-- Invalid input gets a 400 from the API and a clear inline message in the UI, and never a crash (D16). IPv6 gets the "planned for later" message.
-- Private and reserved IPv4 addresses show a visible label and the explanation of what this means for the results. No external calls are made, and verdict and source cards show `not_applicable` and `skipped`.
-- The Shodan InternetDB, RDAP and Team Cymru clients are implemented. Each handles `ok`, `no_data`, `timeout` and `error`.
+**Frontend**
+
+- `GET /` shows the lookup form, and `POST /lookup` calls the backend API and renders the verdict banner and the Shodan InternetDB card, with the raw response in a collapsible `<details>` element.
+- A private or reserved IP shows its label and explanation. An invalid or IPv6 input shows the backend's message inline (D16). A stopped backend shows "backend unavailable".
+- The frontend's own `/healthz`.
+
+**Fixtures**
+
+- `backend/scripts/record_fixtures.py` is run by hand and never in CI. It records InternetDB responses for a known IP with data and an IP with no data, writes them to the gitignored `tests/fixtures/_raw/`, and writes scrubbed copies to `tests/fixtures/shodan_internetdb/` (D13). InternetDB is keyless, so no keys are involved.
+
+**Tests** (none makes a real network call)
+
+- The classifier, including every category.
+- The InternetDB client against fixtures for `ok`, `no_data`, `timeout`, `rate_limited` and `error`.
+- The API endpoint for a global, a private and an invalid IP, and the error shape for every row listed above.
+- The frontend, with the backend mocked by `respx`: it renders the verdict and the source card from a contract response, shows the inline message for a 400, and shows "backend unavailable" when the backend can't be reached or returns a 5xx.
+
+**Done when:** a fresh clone, then `uv sync` in each part, then running both lets me look up a known public IP in the browser and see the real InternetDB card, look up a private IP and see its label and explanation, enter garbage and see an inline message, and stop the backend and see "backend unavailable". Tests pass and CI is green.
+
+### M1 — The remaining keyless sources and the verdict rules
+
+- RDAP (via rdap.org) and Team Cymru clients are implemented, each handling `ok`, `no_data`, `timeout` and `error`. Before writing each, I check its current documentation and update section 4 if anything differs.
 - The outbound rate limiter keeps RDAP within 10 requests per 10 s.
-- The UI shows a verdict banner and one card per source with readable summary fields, and the raw JSON is collapsible.
-- `docs/verdict-rules.md` contains the proposed provisional rules, and **I have reviewed and approved them**.
-- Tests cover: the IP classifier, including every category; each client against fixtures for each status; the verdict engine for each rule, including the all-sources-failed case; the API endpoint for a global, a private and an invalid IP; the error shape for every status in section 3; and the rate limiter, using an injected clock.
-- Fixtures were recorded and scrubbed with `scripts/record_fixtures.py` (D13), and no committed fixture contains a key.
-- Frontend tests, with the backend mocked by `respx`, show that the page renders the verdict and every source status from a contract response, shows the inline message for a 400, and shows the "backend unavailable" message when the backend can't be reached or returns a 5xx.
+- `docs/verdict-rules.md` contains the proposed provisional rules, and **I have reviewed and approved them** before the verdict engine is written (D7). The verdict engine then replaces the M0 placeholder, and `rules_version` becomes `"0.1"`.
+- The frontend shows one card per source with readable summary fields for all three sources.
+- Fixtures for RDAP and Team Cymru are recorded and scrubbed with `scripts/record_fixtures.py` (D13), and no committed fixture contains a key. `scripts/smoke_live.py` is added.
+- Tests cover: each new client against fixtures for each status; the verdict engine for each rule, including the all-sources-failed case; the API endpoint's verdict for a global and a private IP; the rate limiter, using an injected clock; and the frontend rendering three cards and the verdict.
 
-**Done when:** looking up a known public IP, a private IP and garbage input in the browser each behaves as described, all tests and CI pass, and the rules are approved.
+**Done when:** looking up a known public IP, a private IP and garbage input in the browser each behaves as described with all three sources, all tests and CI pass, and the rules are approved.
 
 ### M2 — Keyed sources
 
