@@ -7,12 +7,12 @@ It is two separate Python programs:
 - **`backend/`** is a JSON API (FastAPI). It does all the work and follows the contract in [design.md](design.md) section 3.
 - **`frontend/`** is the web page (FastAPI + Jinja2, no JavaScript). It gets all its data by calling the backend's API.
 
-Status: milestone 0. One real source (Shodan InternetDB, no key needed) is wired end to end. See [design.md](design.md) for the plan.
+Status: milestone 1. Three keyless sources (Shodan InternetDB, RDAP via rdap.org and Team Cymru IP to ASN) are queried together, and the overall verdict follows the rules in [docs/verdict-rules.md](docs/verdict-rules.md). See [design.md](design.md) for the plan.
 
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 for you if needed)
-- Internet access when running the app (the backend calls Shodan InternetDB). The tests need none.
+- Internet access when running the app (the backend calls Shodan InternetDB and RDAP over HTTPS and Team Cymru over DNS). The tests need none.
 
 ## Install
 
@@ -48,7 +48,7 @@ uv run uvicorn app.main:app --reload --port 8001
 - Call the API directly: `curl http://127.0.0.1:8000/api/v1/ip/8.8.8.8`
 - Health checks: `/healthz` on each port.
 
-The frontend finds the backend through `BACKEND_URL` (default `http://127.0.0.1:8000`). Settings can be put in environment variables or in a `.env` file at the repo root; copy `.env.example` to start. M0 needs no API keys. `.env` is gitignored and must never be committed.
+The frontend finds the backend through `BACKEND_URL` (default `http://127.0.0.1:8000`). Settings can be put in environment variables or in a `.env` file at the repo root; copy `.env.example` to start. M0 and M1 need no API keys. `.env` is gitignored and must never be committed.
 
 ## Test and lint
 
@@ -60,13 +60,20 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-Tests never make real network calls: sockets are blocked and HTTP is mocked from saved fixtures.
+Tests never make real network calls and need no API key. Sockets are blocked, HTTP is mocked with `respx`, and Team Cymru's DNS answers come from a fake resolver, all from saved fixtures. You can run them with the network off.
 
 ## Recording fixtures (maintainers)
 
-`backend/scripts/record_fixtures.py` calls the real source and saves scrubbed responses under `backend/tests/fixtures/`. It is run by hand, never in CI:
+`backend/scripts/record_fixtures.py` calls the three real sources and saves scrubbed responses under `backend/tests/fixtures/<source>/`. It needs the network, is run by hand, and is never run in CI. Unscrubbed copies go to the gitignored `tests/fixtures/_raw/`:
 
 ```bash
 cd backend
 uv run python scripts/record_fixtures.py
+```
+
+To check by hand that the real clients still parse the live sources (it makes one real lookup, needs no key, and is never run in CI):
+
+```bash
+cd backend
+uv run python scripts/smoke_live.py
 ```

@@ -196,3 +196,54 @@ def test_user_input_is_one_url_segment_and_html_escaped(client: TestClient, rout
     assert raw_path.startswith("/api/v1/ip/..%2Fhealthz%3Cscript%3E")
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;" in html
+
+
+def three_source_response() -> dict[str, Any]:
+    """The design.md section 3 example: two sources ok and one timed out."""
+    body = contract_response()
+    body["sources"] += [
+        {
+            "name": "rdap",
+            "display_name": "RDAP",
+            "status": "ok",
+            "latency_ms": 612,
+            "summary": {
+                "network_name": "GOGL",
+                "network_range": "8.8.8.0 - 8.8.8.255",
+                "org_name": "Google LLC",
+                "country": None,
+                "registry": "arin",
+                "registration_date": "2023-12-28",
+                "last_changed": "2023-12-28",
+                "abuse_email": "network-abuse@google.com",
+            },
+            "raw": {"name": "GOGL"},
+            "error": None,
+        },
+        {
+            "name": "team_cymru",
+            "display_name": "Team Cymru IP to ASN",
+            "status": "timeout",
+            "latency_ms": 8000,
+            "summary": None,
+            "raw": None,
+            "error": "No DNS answer within 8 s",
+        },
+    ]
+    return body
+
+
+def test_three_sources_render_three_cards_and_a_failed_one_says_why(
+    client: TestClient, router
+) -> None:
+    router.get(f"{BACKEND}/api/v1/ip/8.8.8.8").respond(200, json=three_source_response())
+    response = client.post("/lookup", data={"ip": "8.8.8.8"})
+    assert response.status_code == 200
+    html = response.text
+    assert html.count('<article class="card') == 3
+    for name in ("Shodan InternetDB", "RDAP", "Team Cymru IP to ASN"):
+        assert name in html
+    assert "Google LLC" in html and "network-abuse@google.com" in html  # RDAP summary fields
+    assert 'class="card status-timeout"' in html
+    assert "No DNS answer within 8 s" in html  # the failed source's reason
+    assert html.count("<details>") == 2  # raw responses only for sources that answered

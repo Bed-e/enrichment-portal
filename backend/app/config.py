@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # Per-source timeout in seconds (design.md D3).
     source_timeout_seconds: float = 8.0
     internetdb_base_url: str = "https://internetdb.shodan.io"
+    rdap_base_url: str = "https://rdap.org"
 
 
 @lru_cache

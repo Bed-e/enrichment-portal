@@ -11,11 +11,14 @@ from app.config import Settings, get_settings
 from app.errors import register_error_handlers
 from app.services.lookup import LookupService
 from app.sources.base import SourceClient
+from app.sources.cymru import TxtResolver
 from app.sources.registry import build_sources
 
 
 def create_app(
-    settings: Settings | None = None, sources: list[SourceClient] | None = None
+    settings: Settings | None = None,
+    sources: list[SourceClient] | None = None,
+    resolver: TxtResolver | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     http = httpx.AsyncClient(follow_redirects=True)
@@ -27,7 +30,7 @@ def create_app(
 
     app = FastAPI(title="Enrichment Portal API", lifespan=lifespan)
     app.state.lookup_service = LookupService(
-        sources if sources is not None else build_sources(settings, http)
+        sources if sources is not None else build_sources(settings, http, resolver)
     )
     register_error_handlers(app)
     app.include_router(router)
