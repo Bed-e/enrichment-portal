@@ -8,6 +8,14 @@ The full design, decisions (D1–D18), API contract and milestones live in [desi
 2. **Never commit secrets.** No API keys, tokens, `.env` files, lookup databases, logs, or unscrubbed recorded responses (see "Values that must never leave this machine" in `design.md` section 4). Check `git status` and the staged diff before every commit.
 3. **No real network calls in tests.** Tests use fixtures only: `respx` for HTTP, a fake resolver for DNS, enforced by `pytest-socket` (D13). Tests must never need a real key or consume a provider's quota.
 
+## Architecture rules
+
+- Python only. The backend (`backend/`) and the frontend (`frontend/`) are separate programs, and the frontend gets its data only from the backend's JSON API over HTTP (D2). It never imports backend code.
+- API keys live only in the backend's environment or `.env`, never in code and never in the frontend.
+- Never upload files or URLs to VirusTotal. Use only its IP lookup endpoint (D19).
+- At most two containers (one per part).
+- Everything reaches `main` through a pull request.
+
 ## Other notes
 
 - Before writing each source client, check the provider's current documentation and update `design.md` section 4 if anything differs.
