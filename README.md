@@ -16,12 +16,17 @@ Status: milestone 0. One real source (Shodan InternetDB, no key needed) is wired
 
 ## Install
 
-Run once in each part:
+Run once in each part, from the repo root. The commands are on separate lines so they work in PowerShell, Command Prompt, bash and zsh alike:
 
 ```bash
-cd backend && uv sync
-cd frontend && uv sync
+cd backend
+uv sync
+cd ../frontend
+uv sync
+cd ..
 ```
+
+`uv sync` creates and manages a `.venv` inside each folder. You do not need to create or activate a virtual environment yourself, because `uv run` uses it automatically. If another environment is active in your terminal, run `deactivate` first.
 
 ## Run
 
