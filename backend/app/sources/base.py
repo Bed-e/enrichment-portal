@@ -1,8 +1,11 @@
 """The interface every source client implements (design.md section 2)."""
 
 import time
+from collections.abc import Mapping
 from ipaddress import IPv4Address, IPv6Address
 from typing import Any, Protocol
+
+import httpx
 
 from app.core.models import SourceResult, SourceStatus
 
@@ -41,3 +44,67 @@ def result_without_call(source: SourceClient, status: SourceStatus, error: str) 
         raw=None,
         error=error,
     )
+
+
+def redact(text: str, secret: str) -> str:
+    """Remove a key from text before it goes into an error message (design.md section 4)."""
+    return text.replace(secret, "REDACTED") if secret else text
+
+
+async def fetch_json(
+    source: SourceClient,
+    http: httpx.AsyncClient,
+    url: str,
+    *,
+    headers: Mapping[str, str],
+    params: Mapping[str, Any] | None = None,
+    timeout: float,
+    started: float,
+) -> tuple[httpx.Response, Any] | SourceResult:
+    """GET and parse JSON. Returns a failed SourceResult for a timeout or transport error.
+
+    Error messages carry only the exception's type name, never the URL or headers, so a key can
+    not end up in them.
+    """
+    try:
+        response = await http.get(url, headers=headers, params=params, timeout=timeout)
+    except httpx.TimeoutException:
+        return finished_result(
+            source, "timeout", started, error=f"No response within {timeout:g} s"
+        )
+    except httpx.HTTPError as exc:
+        return finished_result(
+            source, "error", started, error=f"Request failed: {type(exc).__name__}"
+        )
+    except Exception as exc:  # a client never raises to the service
+        return finished_result(
+            source, "error", started, error=f"Unexpected failure: {type(exc).__name__}"
+        )
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    return response, body
+
+
+def key_or_quota_failure(
+    source: SourceClient,
+    response: httpx.Response,
+    started: float,
+    provider_message: str | None,
+    secret: str,
+) -> SourceResult | None:
+    """The outcomes every keyed source shares: a rejected key (401/403) and a quota (429).
+
+    A 429 becomes `rate_limited` with the provider's own message, never `error` (design.md
+    section 4, "Quota behaviour"). Returns None for any other status.
+    """
+    if response.status_code in (401, 403):
+        return finished_result(
+            source, "error", started, error=f"API key rejected (HTTP {response.status_code})"
+        )
+    if response.status_code == 429:
+        detail = redact((provider_message or "")[:200], secret)
+        suffix = f": {detail}" if detail else ""
+        return finished_result(source, "rate_limited", started, error=f"HTTP 429{suffix}")
+    return None

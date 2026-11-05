@@ -247,3 +247,104 @@ def test_three_sources_render_three_cards_and_a_failed_one_says_why(
     assert 'class="card status-timeout"' in html
     assert "No DNS answer within 8 s" in html  # the failed source's reason
     assert html.count("<details>") == 2  # raw responses only for sources that answered
+
+
+def seven_source_response() -> dict[str, Any]:
+    """Seven sources as the M2 backend returns them: five answer, one is out of quota and one
+    has no key set."""
+    body = three_source_response()
+    body["sources"][2].update(
+        status="ok",
+        latency_ms=90,
+        summary={"asn": 15169, "as_name": "GOOGLE - Google LLC, US", "bgp_prefix": "8.8.8.0/24"},
+        raw={"origin": ["15169 | 8.8.8.0/24 | US | arin | 2023-12-28"]},
+        error=None,
+    )
+    body["sources"] += [
+        {
+            "name": "abuseipdb",
+            "display_name": "AbuseIPDB",
+            "status": "ok",
+            "latency_ms": 210,
+            "summary": {"abuse_confidence_score": 0, "total_reports": 198, "is_whitelisted": True},
+            "raw": {"data": {"abuseConfidenceScore": 0}},
+            "error": None,
+        },
+        {
+            "name": "greynoise",
+            "display_name": "GreyNoise Community",
+            "status": "rate_limited",
+            "latency_ms": 120,
+            "summary": None,
+            "raw": None,
+            "error": "HTTP 429: Weekly lookup limit reached.",
+        },
+        {
+            "name": "virustotal",
+            "display_name": "VirusTotal",
+            "status": "ok",
+            "latency_ms": 400,
+            "summary": {"malicious": 1, "suspicious": 0, "harmless": 54, "undetected": 37},
+            "raw": {"data": {"attributes": {}}},
+            "error": None,
+        },
+        {
+            "name": "ipinfo",
+            "display_name": "ipinfo Lite",
+            "status": "not_configured",
+            "latency_ms": None,
+            "summary": None,
+            "raw": None,
+            "error": "No API key set",
+        },
+    ]
+    return body
+
+
+def test_seven_sources_render_seven_cards_with_distinct_states(client: TestClient, router) -> None:
+    router.get(f"{BACKEND}/api/v1/ip/8.8.8.8").respond(200, json=seven_source_response())
+    html = client.post("/lookup", data={"ip": "8.8.8.8"}).text
+    assert html.count('<article class="card') == 7
+    for name in ("AbuseIPDB", "GreyNoise Community", "VirusTotal", "ipinfo Lite"):
+        assert name in html
+    assert "total reports" in html  # a keyed source's summary fields are readable
+    # A spent quota is its own grey card, not an error and not "no data".
+    assert 'class="card status-rate_limited"' in html
+    assert "Quota reached" in html
+    assert "Weekly lookup limit reached" in html  # the provider's message is shown
+    # A missing key is a distinct, quiet card that says what to do.
+    assert 'class="card status-not_configured"' in html
+    assert "no API key is set on the backend" in html
+
+
+def test_ipinfo_attribution_is_shown_on_every_page(client: TestClient, router) -> None:
+    router.get(f"{BACKEND}/api/v1/ip/8.8.8.8").respond(200, json=contract_response())
+    for html in (client.get("/").text, client.post("/lookup", data={"ip": "8.8.8.8"}).text):
+        assert '<a href="https://ipinfo.io"' in html
+        assert "IPinfo" in html
+
+
+def test_frontend_holds_no_key_and_none_reaches_the_page(
+    router, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.config import Settings as FrontendSettings
+
+    # The frontend's settings have no field that could hold a key (design.md D2).
+    assert set(FrontendSettings.model_fields) == {"backend_url", "backend_timeout_seconds"}
+    keys = {
+        "ABUSEIPDB_API_KEY": "FAKE-ABUSEIPDB-KEY-0000",
+        "GREYNOISE_API_KEY": "FAKE-GREYNOISE-KEY-0000",
+        "VIRUSTOTAL_API_KEY": "FAKE-VIRUSTOTAL-KEY-0000",
+        "IPINFO_TOKEN": "FAKE-IPINFO-TOKEN-0000",
+    }
+    for name, value in keys.items():
+        monkeypatch.setenv(name, value)
+    client = TestClient(create_app(Settings(backend_url=BACKEND)))
+    route = router.get(f"{BACKEND}/api/v1/ip/8.8.8.8").respond(200, json=seven_source_response())
+    pages = [client.get("/").text, client.post("/lookup", data={"ip": "8.8.8.8"}).text]
+    for html in pages:
+        for value in keys.values():
+            assert value not in html
+    request = route.calls.last.request  # and the frontend forwards no key to the backend
+    for value in keys.values():
+        assert value not in str(request.url) and value not in " ".join(request.headers.values())
