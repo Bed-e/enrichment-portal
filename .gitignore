@@ -11,3 +11,13 @@ env/
 # Python cache
 __pycache__/
 *.py[cod]
+
+# Never leave this machine (design.md section 4)
+data/
+logs/
+*.db
+**/tests/fixtures/_raw/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
