@@ -1,0 +1,21 @@
+{
+  "status_code": 200,
+  "body": {
+    "data": {
+      "ipAddress": "203.0.114.7",
+      "isPublic": true,
+      "ipVersion": 4,
+      "isWhitelisted": false,
+      "abuseConfidenceScore": 0,
+      "countryCode": "CN",
+      "usageType": null,
+      "isp": "CHINANET FUJIAN PROVINCE NETWORK",
+      "domain": "chinatelecom.cn",
+      "hostnames": [],
+      "isTor": false,
+      "totalReports": 0,
+      "numDistinctUsers": 0,
+      "lastReportedAt": null
+    }
+  }
+}

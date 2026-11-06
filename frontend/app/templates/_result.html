@@ -40,6 +40,9 @@
   </dl>
   {% elif source.status == "rate_limited" %}
   <p>Quota reached — try later.</p>
+  {% if source.error %}<p class="meta">{{ source.error }}</p>{% endif %}
+  {% elif source.status == "not_configured" %}
+  <p>Not configured: no API key is set on the backend.</p>
   {% elif source.error %}
   <p>{{ source.error }}</p>
   {% endif %}

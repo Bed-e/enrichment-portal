@@ -7,7 +7,7 @@ It is two separate Python programs:
 - **`backend/`** is a JSON API (FastAPI). It does all the work and follows the contract in [design.md](design.md) section 3.
 - **`frontend/`** is the web page (FastAPI + Jinja2, no JavaScript). It gets all its data by calling the backend's API.
 
-Status: milestone 1. Three keyless sources (Shodan InternetDB, RDAP via rdap.org and Team Cymru IP to ASN) are queried together, and the overall verdict follows the rules in [docs/verdict-rules.md](docs/verdict-rules.md). See [design.md](design.md) for the plan.
+Status: milestone 2. Seven sources are queried together: three that need no key (Shodan InternetDB, RDAP via rdap.org, Team Cymru IP to ASN) and four that use a free key (AbuseIPDB, GreyNoise Community, VirusTotal, ipinfo Lite). The overall verdict follows the rules in [docs/verdict-rules.md](docs/verdict-rules.md). See [design.md](design.md) for the plan.
 
 ## Requirements
 
@@ -48,7 +48,29 @@ uv run uvicorn app.main:app --reload --port 8001
 - Call the API directly: `curl http://127.0.0.1:8000/api/v1/ip/8.8.8.8`
 - Health checks: `/healthz` on each port.
 
-The frontend finds the backend through `BACKEND_URL` (default `http://127.0.0.1:8000`). Settings can be put in environment variables or in a `.env` file at the repo root; copy `.env.example` to start. M0 and M1 need no API keys. `.env` is gitignored and must never be committed.
+The frontend finds the backend through `BACKEND_URL` (default `http://127.0.0.1:8000`). Settings can be put in environment variables or in a `.env` file at the repo root; copy `.env.example` to start. The app works with no keys at all (see below). `.env` is gitignored and must never be committed.
+
+## API keys (optional)
+
+Three sources need nothing. The other four each use a free key, and the app runs without them: a source with no key shows a "Not configured" card, the other sources still answer, and the verdict says which sources did not.
+
+| Variable | Source | Where to get a free key | Free limit |
+|---|---|---|---|
+| `ABUSEIPDB_API_KEY` | AbuseIPDB | account at abuseipdb.com | 1,000 checks a day |
+| `GREYNOISE_API_KEY` | GreyNoise Community | account at greynoise.io; needs a business email (Gmail, Hotmail and similar get no key) | 50 lookups a week, shared with the GreyNoise Visualizer |
+| `VIRUSTOTAL_API_KEY` | VirusTotal | account at virustotal.com | 4 a minute, 500 a day; non-commercial use only |
+| `IPINFO_TOKEN` | ipinfo Lite | account at ipinfo.io | unlimited; the app shows ipinfo's credit link |
+
+To add keys:
+
+1. Copy the template to `.env` in the repo root, next to `.env.example`. For example `cp .env.example .env`, or `Copy-Item .env.example .env` in PowerShell.
+2. Open `.env` in your editor and paste each key after the `=`, with no quotes and no spaces. Leave out any you do not have.
+3. Check that git ignores it: `git check-ignore .env` should print `.env`.
+4. Restart the backend. Only the backend reads the keys; the frontend never sees them.
+
+Never paste a key into chat, an issue, a commit or a log. If one leaks, revoke it at the provider and make a new one. The tests need no keys and ignore your `.env` completely.
+
+When a quota runs out (GreyNoise's will, within a few days of normal use), its card turns grey with "Quota reached" and the lookup still works.
 
 ## Test and lint
 
@@ -64,14 +86,14 @@ Tests never make real network calls and need no API key. Sockets are blocked, HT
 
 ## Recording fixtures (maintainers)
 
-`backend/scripts/record_fixtures.py` calls the three real sources and saves scrubbed responses under `backend/tests/fixtures/<source>/`. It needs the network, is run by hand, and is never run in CI. Unscrubbed copies go to the gitignored `tests/fixtures/_raw/`:
+`backend/scripts/record_fixtures.py` calls the real sources and saves scrubbed responses under `backend/tests/fixtures/<source>/`. It needs the network and your keys from `.env`, is run by hand, and is never run in CI. It never prints a key, and it replaces any key value with `REDACTED`. Unscrubbed copies go to the gitignored `tests/fixtures/_raw/`. GreyNoise is left out of the default run because each lookup spends one of its 50 a week; name it to record it, for example `uv run python scripts/record_fixtures.py greynoise`:
 
 ```bash
 cd backend
 uv run python scripts/record_fixtures.py
 ```
 
-To check by hand that the real clients still parse the live sources (it makes one real lookup, needs no key, and is never run in CI):
+To check by hand that the real clients still parse the live sources (it makes one real lookup, skips any source with no key, skips GreyNoise unless you add `--greynoise`, and is never run in CI):
 
 ```bash
 cd backend

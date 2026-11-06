@@ -16,6 +16,24 @@ def key_variable_names() -> list[str]:
     ]
 
 
+def configured_key_values() -> list[str]:
+    """Real key values from the environment and from the repo's .env, if either exists.
+
+    Read straight from the file because the test suite clears the key variables from the
+    environment (see conftest.py). Values are never printed.
+    """
+    names = key_variable_names()
+    values = [os.environ[n] for n in names if os.environ.get(n)]
+    env_file = ROOT / ".env"
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            name, _, value = line.partition("=")
+            value = value.strip().strip("\"'")
+            if name.strip() in names and value:
+                values.append(value)
+    return values
+
+
 def committed_fixture_files() -> list[Path]:
     return [p for p in FIXTURES.rglob("*") if p.is_file() and "_raw" not in p.parts]
 
@@ -27,9 +45,9 @@ def test_fixtures_exist() -> None:
 def test_no_fixture_contains_a_key_name_or_value() -> None:
     names = key_variable_names()
     assert names, ".env.example should list the key variables"
-    values = [os.environ[n] for n in names if os.environ.get(n)]
+    values = configured_key_values()
     for path in committed_fixture_files():
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         for name in names:
             assert name not in text, f"{path.name} mentions {name}"
         for value in values:

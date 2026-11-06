@@ -48,7 +48,7 @@ def verdict(*results: SourceResult):
 
 
 def test_rules_version() -> None:
-    assert verdict(internetdb(), rdap(), cymru()).rules_version == RULES_VERSION == "0.1"
+    assert verdict(internetdb(), rdap(), cymru()).rules_version == RULES_VERSION == "0.2"
 
 
 # L1
@@ -87,7 +87,7 @@ def internetdb_failed(status: str) -> SourceResult:
 def test_l3_flagging_source_missing_is_unknown_even_if_others_answer(status: str) -> None:
     result = verdict(internetdb_failed(status), rdap(), cymru())
     assert result.level == "unknown"
-    assert "only source that can flag an IP" in result.summary
+    assert "None of the sources that can flag an IP (Shodan InternetDB)" in result.summary
     assert f"Shodan InternetDB ({status.replace('_', ' ')})" in result.summary
     assert result.reasons == []
 

@@ -1,11 +1,18 @@
 """Check that the real clients still parse the real sources (design.md D13, "Refreshing").
 
-Run by hand from backend/, never in CI:   uv run python scripts/smoke_live.py [IP]
+Run by hand from backend/, never in CI:
 
-It makes one live lookup (default 8.8.8.8) through the same clients the app uses, and checks
-that every source answered `ok` with the summary keys from design.md section 3. A failure here
-usually means a provider changed its format: re-run scripts/record_fixtures.py and review the
-fixture diff. It writes nothing to disk and needs no keys.
+    uv run python scripts/smoke_live.py [IP] [--greynoise]
+
+It makes one live lookup (default 8.8.8.8) through the same clients the app uses and checks that
+each source answered with the summary keys from design.md section 3. A failure usually means a
+provider changed its format: re-run scripts/record_fixtures.py and review the fixture diff.
+
+- Keys are read from the repo's .env through the backend's settings and are never printed.
+  A keyed source with no key is reported as skipped, not as a failure.
+- GreyNoise is skipped unless you pass --greynoise: its free tier allows only 50 lookups a week,
+  shared with the GreyNoise Visualizer, and every run would spend one.
+- It writes nothing to disk.
 """
 
 import asyncio
@@ -33,20 +40,63 @@ EXPECTED_KEYS = {
         "abuse_email",
     },
     "team_cymru": {"asn", "as_name", "bgp_prefix", "country_code", "registry", "allocated_date"},
+    "abuseipdb": {
+        "abuse_confidence_score",
+        "total_reports",
+        "num_distinct_users",
+        "last_reported_at",
+        "usage_type",
+        "isp",
+        "domain",
+        "country_code",
+        "is_tor",
+        "is_whitelisted",
+    },
+    "greynoise": {"noise", "riot", "classification", "name", "last_seen", "link", "message"},
+    "virustotal": {
+        "malicious",
+        "suspicious",
+        "harmless",
+        "undetected",
+        "reputation",
+        "asn",
+        "as_owner",
+        "country",
+        "network",
+    },
+    "ipinfo": {
+        "asn",
+        "as_name",
+        "as_domain",
+        "country_code",
+        "country",
+        "continent_code",
+        "continent",
+    },
 }
+# 8.8.8.8 is not in GreyNoise's Community data, so "no_data" is a normal answer from it.
+ACCEPTED_STATUSES = {"greynoise": ("ok", "no_data")}
 
 
-async def main(ip_text: str) -> int:
+async def main(ip_text: str, include_greynoise: bool) -> int:
     ip = ip_address(ip_text)
     failures = 0
     async with httpx.AsyncClient(follow_redirects=True) as http:
         sources = build_sources(get_settings(), http)
-        results = await asyncio.gather(*(s.lookup(ip) for s in sources))
+        runnable = []
+        for source in sources:
+            if source.name == "greynoise" and not include_greynoise:
+                print("skip greynoise (saves its 50-a-week quota; pass --greynoise to include)")
+            elif not source.is_configured():
+                print(f"skip {source.name} (no key set in .env)")
+            else:
+                runnable.append(source)
+        results = await asyncio.gather(*(s.lookup(ip) for s in runnable))
     for result in results:
         problems = []
-        if result.status != "ok":
+        if result.status not in ACCEPTED_STATUSES.get(result.name, ("ok",)):
             problems.append(f"status {result.status}: {result.error}")
-        else:
+        elif result.status == "ok":
             missing = EXPECTED_KEYS[result.name] - set(result.summary or {})
             empty = [k for k, v in (result.summary or {}).items() if v in (None, "", [])]
             if missing:
@@ -61,4 +111,5 @@ async def main(ip_text: str) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main(sys.argv[1] if len(sys.argv) > 1 else "8.8.8.8")))
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    sys.exit(asyncio.run(main(args[0] if args else "8.8.8.8", "--greynoise" in sys.argv)))

@@ -1,0 +1,9 @@
+{
+  "status_code": 404,
+  "body": {
+    "ip": "203.0.114.7",
+    "noise": false,
+    "riot": false,
+    "message": "IP not observed scanning the internet."
+  }
+}
